@@ -2,6 +2,7 @@ const http = require('http');
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
+const mongoose = require('mongoose');
 const connectDatabase = require('./config/db');
 const env = require('./config/env');
 const errorHandler = require('./middleware/errorMiddleware');
@@ -17,6 +18,7 @@ const devRoutes = require('./routes/devRoutes');
 const doctorPortalRoutes = require('./routes/doctorPortalRoutes');
 const pharmacyRoutes = require('./routes/pharmacyRoutes');
 const telemedicineRoutes = require('./routes/telemedicineRoutes');
+const insuranceRoutes = require('./routes/insuranceRoutes');
 const PharmacyProduct = require('./models/PharmacyProduct');
 const { createCallSignaling } = require('./realtime/callSignaling');
 
@@ -33,9 +35,24 @@ if (env.FORCE_HTTPS) {
     return res.redirect(301, `https://${req.headers.host}${req.originalUrl}`);
   });
 }
-app.use(cors());
+const allowedOrigins = new Set((env.CORS_ORIGINS || []).map((o) => String(o).trim()).filter(Boolean));
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.size === 0 || allowedOrigins.has(origin)) return callback(null, true);
+    const corsError = new Error('cors_not_allowed');
+    corsError.status = 403;
+    return callback(corsError);
+  }
+}));
 app.use(express.json({ limit: '1mb' }));
 app.use(morgan('dev'));
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
 // Health
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
@@ -46,6 +63,7 @@ app.use('/api/appointments', appointmentRoutes);
 app.use('/api/doctor', doctorPortalRoutes);
 app.use('/api/pharmacy', pharmacyRoutes);
 app.use('/api/telemedicine', telemedicineRoutes);
+app.use('/api', insuranceRoutes);
 app.use('/api', serviceRoutes); // OCR, Voice, Verify, AI are mounted directly on /api
 app.use('/api', ambulanceRoutes);
 app.use('/api', devRoutes);
@@ -87,6 +105,28 @@ async function seedPharmacyProductsIfNeeded() {
 }
 
 // Start server
+let shuttingDown = false;
+function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`Received ${signal}. Shutting down gracefully...`);
+
+  const forceExitTimer = setTimeout(() => {
+    process.exit(1);
+  }, 10_000);
+  forceExitTimer.unref();
+
+  httpServer.close(async () => {
+    try {
+      await mongoose.connection.close(false);
+    } catch (_) { }
+    process.exit(0);
+  });
+}
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+
 connectDatabase()
   .then(async () => {
     try {

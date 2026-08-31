@@ -1,7 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardTitle } from '../components/Card';
 import { ClipboardDocumentListIcon, LightBulbIcon } from '@heroicons/react/24/outline';
 import { healthAssistant } from '../utils/api';
+
+const VOICE_RESTART_DELAY_MS = 900;
 
 const SymptomChecker = () => {
   const [symptoms, setSymptoms] = useState('');
@@ -10,147 +12,321 @@ const SymptomChecker = () => {
   const [conversationMode, setConversationMode] = useState(false);
   const [chat, setChat] = useState([]);
   const [error, setError] = useState('');
-  const recognitionRef = useRef(null);
-  const [voices, setVoices] = useState([]);
   const [selectedVoice, setSelectedVoice] = useState(null);
+  const [isAssistantTyping, setIsAssistantTyping] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+
+  const recognitionRef = useRef(null);
+  const conversationModeRef = useRef(false);
+  const isListeningRef = useRef(false);
+  const isAssistantTypingRef = useRef(false);
+  const isSpeakingRef = useRef(false);
+  const restartTimerRef = useRef(null);
+  const handleUserMessageRef = useRef(null);
 
   useEffect(() => {
-    // Load available voices
+    conversationModeRef.current = conversationMode;
+  }, [conversationMode]);
+
+  useEffect(() => {
+    isAssistantTypingRef.current = isAssistantTyping;
+  }, [isAssistantTyping]);
+
+  useEffect(() => {
+    isSpeakingRef.current = isSpeaking;
+  }, [isSpeaking]);
+
+  const getVoiceSupportError = useCallback(() => {
+    if (typeof window === 'undefined') return 'Voice recognition is unavailable in this environment.';
+
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return 'Voice recognition is not supported in this browser. Use Chrome/Edge.';
+
+    const hostname = window.location?.hostname || '';
+    const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+    if (!window.isSecureContext && !isLocalhost) {
+      return 'Voice recognition requires HTTPS (or localhost in development).';
+    }
+    return '';
+  }, []);
+
+  const clearRestartTimer = useCallback(() => {
+    if (restartTimerRef.current) {
+      clearTimeout(restartTimerRef.current);
+      restartTimerRef.current = null;
+    }
+  }, []);
+
+  const stopListening = useCallback(() => {
+    clearRestartTimer();
+    try {
+      if (recognitionRef.current && isListeningRef.current) {
+        recognitionRef.current.stop();
+      }
+    } catch (_) {}
+    isListeningRef.current = false;
+    setIsListening(false);
+  }, [clearRestartTimer]);
+
+  const startListening = useCallback(() => {
+    clearRestartTimer();
+    setError('');
+
+    const supportError = getVoiceSupportError();
+    if (supportError) {
+      setError(supportError);
+      return;
+    }
+
+    if (!recognitionRef.current || isListeningRef.current) return;
+
+    try {
+      recognitionRef.current.start();
+    } catch (e) {
+      if (e?.name !== 'InvalidStateError') {
+        setError('Could not start voice recognition. Check microphone permission.');
+      }
+    }
+  }, [clearRestartTimer, getVoiceSupportError]);
+
+  const scheduleListeningRestart = useCallback(() => {
+    clearRestartTimer();
+    if (!conversationModeRef.current) return;
+    if (isAssistantTypingRef.current || isSpeakingRef.current) return;
+    restartTimerRef.current = setTimeout(() => {
+      startListening();
+    }, VOICE_RESTART_DELAY_MS);
+  }, [clearRestartTimer, startListening]);
+
+  const speak = useCallback(
+    (message, langHint) =>
+      new Promise((resolve) => {
+        if (typeof window === 'undefined' || !window.speechSynthesis || !message) {
+          resolve();
+          return;
+        }
+
+        try {
+          window.speechSynthesis.cancel();
+          setIsSpeaking(true);
+
+          const utter = new SpeechSynthesisUtterance(message);
+          if (selectedVoice) {
+            utter.voice = selectedVoice;
+          } else if (langHint && langHint.startsWith('hi')) {
+            utter.lang = 'hi-IN';
+          }
+          utter.rate = 0.95;
+          utter.pitch = 1.0;
+
+          utter.onend = () => {
+            setIsSpeaking(false);
+            resolve();
+          };
+
+          utter.onerror = () => {
+            setIsSpeaking(false);
+            resolve();
+          };
+
+          window.speechSynthesis.speak(utter);
+        } catch (_) {
+          setIsSpeaking(false);
+          resolve();
+        }
+      }),
+    [selectedVoice]
+  );
+
+  const handleUserMessage = useCallback(
+    async (message) => {
+      const trimmedMessage = String(message || '').trim();
+      if (!trimmedMessage) return;
+
+      setError('');
+      const language = /[\u0900-\u097F]/.test(trimmedMessage) ? 'hi' : 'en';
+
+      setChat((currentChat) => [...currentChat, { role: 'user', text: trimmedMessage }]);
+      setIsAssistantTyping(true);
+
+      if (conversationModeRef.current) {
+        stopListening();
+      }
+
+      try {
+        const { reply } = await healthAssistant({ message: trimmedMessage, language });
+        const assistantText = reply || "I'm here to help. Please describe your symptoms.";
+        setChat((currentChat) => [...currentChat, { role: 'assistant', text: assistantText }]);
+        await speak(assistantText, language);
+      } catch (e) {
+        const fallbackMessage =
+          e?.message ||
+          "I'm sorry, I'm having trouble right now. Please try again or consult a doctor.";
+        setChat((currentChat) => [...currentChat, { role: 'assistant', text: fallbackMessage }]);
+        await speak(fallbackMessage, 'en');
+      } finally {
+        setIsAssistantTyping(false);
+        if (conversationModeRef.current) {
+          scheduleListeningRestart();
+        }
+      }
+    },
+    [scheduleListeningRestart, speak, stopListening]
+  );
+
+  useEffect(() => {
+    handleUserMessageRef.current = handleUserMessage;
+  }, [handleUserMessage]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return () => {};
+
+    const synth = window.speechSynthesis;
     const loadVoices = () => {
-      const availableVoices = speechSynthesis.getVoices();
-      setVoices(availableVoices);
-      // Select a default voice (prefer female, English)
-      const defaultVoice = availableVoices.find(v => v.lang.startsWith('en') && v.name.toLowerCase().includes('female')) ||
-                          availableVoices.find(v => v.lang.startsWith('en')) ||
-                          availableVoices[0];
+      const availableVoices = synth.getVoices();
+      const defaultVoice =
+        availableVoices.find((voice) => voice.lang.startsWith('en') && voice.name.toLowerCase().includes('female')) ||
+        availableVoices.find((voice) => voice.lang.startsWith('en')) ||
+        availableVoices[0] ||
+        null;
       setSelectedVoice(defaultVoice);
     };
 
     loadVoices();
-    if (speechSynthesis.onvoiceschanged !== undefined) {
-      speechSynthesis.onvoiceschanged = loadVoices;
+    if (synth?.addEventListener) {
+      synth.addEventListener('voiceschanged', loadVoices);
+    } else if (synth) {
+      synth.onvoiceschanged = loadVoices;
     }
 
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SR) {
-      const r = new SR();
-      r.lang = 'en-US';
-      r.continuous = false;
-      r.interimResults = false;
-      r.onresult = (e) => {
-        const transcript = e.results[0][0].transcript;
+      const recognizer = new SR();
+      recognizer.lang = 'en-US';
+      recognizer.continuous = false;
+      recognizer.interimResults = true;
+
+      recognizer.onstart = () => {
+        isListeningRef.current = true;
+        setIsListening(true);
+      };
+
+      recognizer.onresult = (event) => {
+        let finalTranscript = '';
+        for (let index = event.resultIndex; index < event.results.length; index += 1) {
+          const segment = event.results[index][0]?.transcript || '';
+          if (event.results[index].isFinal) {
+            finalTranscript += `${segment} `;
+          }
+        }
+
+        const transcript = finalTranscript.trim();
+        if (!transcript) return;
         setSymptoms(transcript);
-        if (conversationMode && transcript.trim()) {
-          handleUserMessage(transcript.trim());
+
+        if (conversationModeRef.current && handleUserMessageRef.current) {
+          handleUserMessageRef.current(transcript);
         }
       };
-      r.onend = () => {
+
+      recognizer.onend = () => {
+        isListeningRef.current = false;
         setIsListening(false);
-        if (conversationMode) {
-          // Auto-restart listening after a short delay
-          setTimeout(() => startListening(), 1000);
+        if (conversationModeRef.current) {
+          scheduleListeningRestart();
         }
       };
-      r.onerror = (e) => {
-        console.error('Speech recognition error:', e.error);
+
+      recognizer.onerror = (event) => {
+        isListeningRef.current = false;
         setIsListening(false);
+
+        if (event.error === 'aborted') return;
+
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+          setError('Microphone permission denied. Allow microphone access and try again.');
+          return;
+        }
+        if (event.error === 'network') {
+          setError('Speech recognition network error. Please retry.');
+          return;
+        }
         setError('Voice recognition failed. Please try again.');
       };
-      recognitionRef.current = r;
-    }
-  }, [conversationMode]);
 
-  const startListening = () => {
-    setError('');
-    if (!recognitionRef.current) {
-      setError('Voice recognition not supported in this browser');
+      recognitionRef.current = recognizer;
+    }
+
+    return () => {
+      clearRestartTimer();
+      try {
+        if (recognitionRef.current) recognitionRef.current.stop();
+      } catch (_) {}
+      recognitionRef.current = null;
+      isListeningRef.current = false;
+      if (synth) {
+        synth.cancel();
+        if (synth?.removeEventListener) {
+          synth.removeEventListener('voiceschanged', loadVoices);
+        } else if (synth.onvoiceschanged === loadVoices) {
+          synth.onvoiceschanged = null;
+        }
+      }
+    };
+  }, [clearRestartTimer, scheduleListeningRestart]);
+
+  const toggleConversationMode = async () => {
+    if (conversationModeRef.current) {
+      conversationModeRef.current = false;
+      setConversationMode(false);
+      stopListening();
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+      setIsSpeaking(false);
+      await speak('Voice conversation ended. You can still type your questions below.', 'en');
       return;
     }
-    try {
-      recognitionRef.current.start();
-      setIsListening(true);
-    } catch (e) {
-      setError('Could not start voice recognition');
+
+    const supportError = getVoiceSupportError();
+    if (supportError) {
+      setError(supportError);
+      return;
     }
+
+    conversationModeRef.current = true;
+    setConversationMode(true);
+    setResults(null);
+    setChat([]);
+    await speak("Starting voice conversation. Tell me about your symptoms and I'll help guide you.", 'en');
+    scheduleListeningRestart();
   };
 
-  const stopListening = () => {
-    try {
-      recognitionRef.current && recognitionRef.current.stop();
-    } catch (_) {}
-    setIsListening(false);
-  };
-
-  const speak = (msg, langHint) => {
-    try {
-      const utter = new SpeechSynthesisUtterance(msg);
-      if (selectedVoice) {
-        utter.voice = selectedVoice;
-      } else if (langHint && langHint.startsWith('hi')) {
-        utter.lang = 'hi-IN';
-      }
-      utter.rate = 0.9; // Slightly slower for clarity
-      utter.pitch = 1.0;
-      window.speechSynthesis.speak(utter);
-    } catch (_) {}
-  };
-
-  const handleUserMessage = async (message) => {
-    const language = /[\u0900-\u097F]/.test(message) ? 'hi' : 'en';
-    const userMsg = { role: 'user', text: message };
-    setChat((c) => [...c, userMsg]);
-
-    try {
-      const { reply } = await healthAssistant({ message, language });
-      const assistantMsg = { role: 'assistant', text: reply || 'I\'m here to help. Please describe your symptoms.' };
-      setChat((c) => [...c, assistantMsg]);
-      speak(assistantMsg.text, language);
-    } catch (e) {
-      const assistantMsg = { role: 'assistant', text: e.message || 'I\'m sorry, I\'m having trouble right now. Please try again or consult a doctor for medical advice.' };
-      setChat((c) => [...c, assistantMsg]);
-      speak(assistantMsg.text, 'en');
-    }
-  };
-
-  const toggleConversationMode = () => {
-    if (conversationMode) {
-      stopListening();
-      setConversationMode(false);
-      speak('Voice conversation ended. You can still type your questions below.', 'en');
-    } else {
-      setConversationMode(true);
-      setChat([]);
-      speak('Starting voice conversation. Tell me about your symptoms and I\'ll help guide you.', 'en');
-      setTimeout(() => startListening(), 2000);
-    }
+  const sendSymptomsToAssistant = () => {
+    const message = symptoms.trim();
+    if (!message) return;
+    setSymptoms('');
+    handleUserMessage(message);
   };
 
   const checkSymptoms = async () => {
-    if (!symptoms.trim()) return;
+    const message = symptoms.trim();
+    if (!message) return;
 
     try {
-      const { reply } = await healthAssistant({ message: symptoms, language: 'en' });
-      const mockResults = {
+      const { reply } = await healthAssistant({ message, language: 'en' });
+      const summary = reply || 'Rest and stay hydrated';
+      setResults({
         possibleConditions: ['Please consult a doctor for proper diagnosis'],
-        recommendations: [
-          reply || 'Rest and stay hydrated',
-          'Monitor your temperature',
-          'Consult a doctor if symptoms worsen'
-        ],
+        recommendations: [summary, 'Monitor your temperature', 'Consult a doctor if symptoms worsen'],
         severity: 'Please see a healthcare professional'
-      };
-      setResults(mockResults);
-    } catch (e) {
-      const mockResults = {
+      });
+    } catch (_) {
+      setResults({
         possibleConditions: ['Unable to analyze - please consult a doctor'],
-        recommendations: [
-          'Rest and stay hydrated',
-          'Monitor your temperature',
-          'Consult a doctor if symptoms worsen'
-        ],
+        recommendations: ['Rest and stay hydrated', 'Monitor your temperature', 'Consult a doctor if symptoms worsen'],
         severity: 'Unknown - see doctor'
-      };
-      setResults(mockResults);
+      });
     }
   };
 
@@ -165,7 +341,6 @@ const SymptomChecker = () => {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-          {/* Input Form */}
           <div>
             <Card>
               <CardContent className="p-6">
@@ -174,33 +349,27 @@ const SymptomChecker = () => {
                   <CardTitle>Describe Your Symptoms</CardTitle>
                 </div>
 
-                {/* Voice Conversation Mode */}
                 <div className="mb-6 text-center">
                   <button
                     onClick={toggleConversationMode}
                     className={`px-6 py-3 text-lg font-semibold rounded-full transition-all duration-300 ${
-                      conversationMode
-                        ? 'bg-red-500 hover:bg-red-600 text-white'
-                        : 'bg-green-500 hover:bg-green-600 text-white'
+                      conversationMode ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-green-500 hover:bg-green-600 text-white'
                     }`}
                   >
                     {conversationMode ? 'Stop Voice Chat' : 'Start Voice Chat'}
                   </button>
                   <p className="mt-2 text-sm text-gray-600">
-                    {conversationMode ? 'Speak naturally - I\'ll listen and respond' : 'Click to talk with me about your health'}
+                    {conversationMode ? "Speak naturally and I'll respond" : 'Click to talk with me about your health'}
                   </p>
                 </div>
 
-                {/* Manual Voice Input */}
                 <div className="mb-6 text-center">
                   <button
                     onClick={isListening ? stopListening : startListening}
-                    disabled={conversationMode}
+                    disabled={conversationMode || isAssistantTyping}
                     className={`px-6 py-3 text-lg font-semibold rounded-lg transition-all duration-300 ${
-                      isListening
-                        ? 'bg-green-500 hover:bg-green-600 text-white animate-pulse'
-                        : 'bg-purple-500 hover:bg-purple-600 text-white'
-                    }`}
+                      isListening ? 'bg-green-500 hover:bg-green-600 text-white animate-pulse' : 'bg-purple-500 hover:bg-purple-600 text-white'
+                    } ${conversationMode || isAssistantTyping ? 'opacity-60 cursor-not-allowed' : ''}`}
                   >
                     {isListening ? 'Stop Listening' : 'Listen Once'}
                   </button>
@@ -209,26 +378,56 @@ const SymptomChecker = () => {
 
                 <textarea
                   value={symptoms}
-                  onChange={(e) => setSymptoms(e.target.value)}
+                  onChange={(event) => setSymptoms(event.target.value)}
                   placeholder="Describe how you're feeling, when it started, and any other relevant details..."
                   className="w-full h-40 p-4 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                 />
 
-                <button
-                  onClick={checkSymptoms}
-                  disabled={!symptoms.trim()}
-                  className={`w-full mt-4 py-3 px-4 rounded-lg font-semibold ${
-                    symptoms.trim()
-                      ? 'bg-primary-500 text-white hover:bg-primary-600'
-                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  }`}
-                >
-                  Analyze Symptoms
-                </button>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+                  <button
+                    onClick={checkSymptoms}
+                    disabled={!symptoms.trim() || isAssistantTyping}
+                    className={`py-3 px-4 rounded-lg font-semibold ${
+                      symptoms.trim() && !isAssistantTyping
+                        ? 'bg-primary-500 text-white hover:bg-primary-600'
+                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    }`}
+                  >
+                    Analyze Symptoms
+                  </button>
+                  <button
+                    onClick={sendSymptomsToAssistant}
+                    disabled={!symptoms.trim() || isAssistantTyping}
+                    className={`py-3 px-4 rounded-lg font-semibold ${
+                      symptoms.trim() && !isAssistantTyping
+                        ? 'bg-indigo-500 text-white hover:bg-indigo-600'
+                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    }`}
+                  >
+                    Send To Assistant
+                  </button>
+                </div>
+
+                {(chat.length > 0 || isAssistantTyping) && (
+                  <div className="mt-4 max-h-56 overflow-y-auto rounded-lg border border-gray-200 bg-white p-3 space-y-2">
+                    {chat.map((msg, idx) => (
+                      <div
+                        key={`${msg.role}-${idx}`}
+                        className={`rounded-md px-3 py-2 text-sm ${
+                          msg.role === 'user' ? 'bg-blue-50 text-blue-900' : 'bg-gray-50 text-gray-800'
+                        }`}
+                      >
+                        <span className="font-semibold mr-2">{msg.role === 'user' ? 'You:' : 'Assistant:'}</span>
+                        <span>{msg.text}</span>
+                      </div>
+                    ))}
+                    {isAssistantTyping && <p className="text-xs text-gray-500 px-1">Assistant is typing...</p>}
+                  </div>
+                )}
 
                 {error && (
                   <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-                    <p className="text-red-800 font-medium">⚠️ {error}</p>
+                    <p className="text-red-800 font-medium">Warning: {error}</p>
                   </div>
                 )}
 
@@ -247,27 +446,18 @@ const SymptomChecker = () => {
             </Card>
           </div>
 
-          {/* Results */}
           <div>
             {results ? (
               <Card>
                 <CardContent className="p-6">
                   <CardTitle className="mb-6">Analysis Results</CardTitle>
-                  
+
                   <div className="space-y-6">
-                    {/* Severity */}
                     <div>
                       <h4 className="font-semibold text-gray-800 mb-2">Severity Level:</h4>
-                      <div className={`px-3 py-2 rounded-lg text-white text-center ${
-                        results.severity === 'Mild' ? 'bg-green-500' :
-                        results.severity === 'Moderate' ? 'bg-yellow-500' :
-                        'bg-red-500'
-                      }`}>
-                        {results.severity}
-                      </div>
+                      <div className="px-3 py-2 rounded-lg text-white text-center bg-red-500">{results.severity}</div>
                     </div>
 
-                    {/* Possible Conditions */}
                     <div>
                       <h4 className="font-semibold text-gray-800 mb-2">Possible Conditions:</h4>
                       <ul className="list-disc list-inside space-y-1 text-gray-700">
@@ -277,7 +467,6 @@ const SymptomChecker = () => {
                       </ul>
                     </div>
 
-                    {/* Recommendations */}
                     <div>
                       <h4 className="font-semibold text-gray-800 mb-2">Recommendations:</h4>
                       <ul className="list-disc list-inside space-y-1 text-gray-700">
@@ -305,9 +494,7 @@ const SymptomChecker = () => {
                   <div className="text-gray-400 mb-4">
                     <ClipboardDocumentListIcon className="h-12 w-12 mx-auto" />
                   </div>
-                  <h3 className="text-lg font-semibold text-gray-600 mb-2">
-                    No Analysis Yet
-                  </h3>
+                  <h3 className="text-lg font-semibold text-gray-600 mb-2">No Analysis Yet</h3>
                   <p className="text-gray-500">
                     Describe your symptoms on the left to get started with the analysis.
                   </p>

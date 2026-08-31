@@ -43,13 +43,25 @@ const doctorNavItems = [
   { path: '/profile', label: 'Profile', icon: UserCircleIcon, protected: true, doctorOnly: true }
 ];
 
+const adminNavItems = [
+  { path: '/admin/pharmacy', label: 'Pharmacy Admin', icon: BuildingStorefrontIcon, protected: true, adminOnly: true },
+  { path: '/profile', label: 'Profile', icon: UserCircleIcon, protected: true, adminOnly: true }
+];
+
 const Sidebar = () => {
   const location = useLocation();
   const authed = isAuthenticated();
   const doctor = isDoctor();
   const admin = isAdmin();
   const [collapsed, setCollapsed] = useState(false);
-  const visibleItems = doctor ? doctorNavItems : navItems;
+  
+  // Decide which navigation items to show based on role
+  let visibleItems = navItems;
+  if (admin) {
+    visibleItems = adminNavItems;
+  } else if (doctor) {
+    visibleItems = doctorNavItems;
+  }
 
   useEffect(() => {
     const saved = localStorage.getItem('sidebarCollapsed');

@@ -87,9 +87,10 @@ function authSocket(socket, next) {
 }
 
 function createCallSignaling(httpServer) {
+  const allowedOrigins = Array.isArray(env.CORS_ORIGINS) ? env.CORS_ORIGINS.filter(Boolean) : [];
   const io = new Server(httpServer, {
     cors: {
-      origin: '*',
+      origin: allowedOrigins.length ? allowedOrigins : true,
       methods: ['GET', 'POST']
     }
   });

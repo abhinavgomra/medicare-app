@@ -98,6 +98,10 @@ exports.sendSignupCode = async (req, res) => {
     const e164 = normalizePhoneToE164(phone) || phone;
     if (!e164) return res.status(400).json({ error: 'Invalid phone format. Use e.g. 9876543210 or +919876543210' });
 
+    if (process.env.MOCK_TWILIO === 'true') {
+      return res.json({ sid: 'mock_sid', status: 'pending' });
+    }
+
     const result = await smsClient.verify.v2.services(env.TWILIO_VERIFY_SERVICE_SID)
       .verifications.create({ to: e164, channel: 'sms' });
     return res.json({ sid: result.sid, status: result.status });
@@ -134,10 +138,16 @@ exports.register = async (req, res) => {
     const e164 = normalizePhoneToE164(phone) || phone;
     if (!e164) return res.status(400).json({ error: 'Invalid phone format' });
 
-    const check = await smsClient.verify.v2.services(env.TWILIO_VERIFY_SERVICE_SID)
-      .verificationChecks.create({ to: e164, code: String(code).trim() });
-    if (check.status !== 'approved') {
-      return res.status(400).json({ error: 'Invalid or expired verification code. Request a new one.' });
+    if (process.env.MOCK_TWILIO === 'true') {
+      if (String(code).trim() !== '123456') {
+        return res.status(400).json({ error: 'Invalid mock code. Use 123456.' });
+      }
+    } else {
+      const check = await smsClient.verify.v2.services(env.TWILIO_VERIFY_SERVICE_SID)
+        .verificationChecks.create({ to: e164, code: String(code).trim() });
+      if (check.status !== 'approved') {
+        return res.status(400).json({ error: 'Invalid or expired verification code. Request a new one.' });
+      }
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);

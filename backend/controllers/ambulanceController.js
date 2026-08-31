@@ -1,144 +1,216 @@
-const twilio = require('twilio');
 const env = require('../config/env');
+const AmbulanceRequest = require('../models/AmbulanceRequest');
+const ClientLocation = require('../models/ClientLocation');
 const emailService = require('../services/emailService');
+const { sendSms } = require('../services/smsService');
 
-let nextAmbulanceRequestId = 1;
-const ambulanceRequests = [];
-const clientLocations = new Map(); // clientId -> { lat, lng, updatedAt }
+function isFiniteNumber(value) {
+    return typeof value === 'number' && Number.isFinite(value);
+}
+
+function normalizeObjectId(value) {
+    const id = String(value || '').trim();
+    return /^[a-fA-F0-9]{24}$/.test(id) ? id : '';
+}
+
+function normalizeClientId(req, rawClientId) {
+    const clientId = String(rawClientId || '').trim();
+    if (clientId) return clientId.slice(0, 128);
+    return String(req.user?.email || '').trim().toLowerCase();
+}
+
+function isStaff(user) {
+    return Boolean(user && ['admin', 'doctor'].includes(user.role));
+}
+
+function canAccessRequest(user, requestDoc) {
+    if (!user || !requestDoc) return false;
+    if (isStaff(user)) return true;
+    return String(user.email || '').toLowerCase() === String(requestDoc.requesterEmail || '').toLowerCase();
+}
+
+function buildUpdate(status, user, note = '') {
+    return {
+        at: new Date(),
+        status,
+        actorEmail: String(user?.email || '').toLowerCase(),
+        actorRole: String(user?.role || '').toLowerCase(),
+        note: String(note || '').trim().slice(0, 500)
+    };
+}
+
+async function sendUnavailableNotifications({ requesterEmail, location, userPhone }) {
+    let emailSent = false;
+    let smsSent = false;
+
+    try {
+        await emailService.sendAmbulanceLocationEmail({
+            location,
+            userEmail: requesterEmail,
+            status: 'unavailable'
+        });
+        emailSent = true;
+    } catch (_) { }
+
+    const phone = String(userPhone || env.NOTIFY_TO_NUMBER || '').trim();
+    if (phone) {
+        const smsResult = await sendSms(phone, "We can't send an ambulance right now. Please stay safe and try again later.");
+        smsSent = Boolean(smsResult && smsResult.sent);
+    }
+
+    return { smsSent, emailSent };
+}
 
 exports.requestAmbulance = async (req, res) => {
     try {
-        const { location } = req.body;
-        if (!location || typeof location.lat !== 'number' || typeof location.lng !== 'number') {
-            return res.status(400).json({ error: 'location with lat and lng required' });
+        const { location } = req.body || {};
+        if (!location || !isFiniteNumber(location.lat) || !isFiniteNumber(location.lng)) {
+            return res.status(400).json({ error: 'location with numeric lat and lng required' });
         }
-        const requesterEmail =
-            (req.user && req.user.email) ||
-            req.headers['x-user-email'] ||
-            req.body.userEmail ||
-            '';
-        let emailNotificationSent = false;
 
-        try {
-            await emailService.sendAmbulanceLocationEmail({
-                location,
-                userEmail: requesterEmail,
-                status: 'requested'
-            });
-            emailNotificationSent = true;
-        } catch (_) { }
-
-        // Simulate ambulance dispatch failure for demonstration
-        const canSendAmbulance = false;
+        const requesterEmail = String(req.user?.email || '').toLowerCase();
+        const requesterRole = String(req.user?.role || 'user');
+        const canSendAmbulance = Boolean(env.AMBULANCE_CAN_DISPATCH);
 
         if (!canSendAmbulance) {
-            // Send SMS to user's phone number
-            const userPhone = req.headers['x-user-phone'] || env.NOTIFY_TO_NUMBER;
-            let smsNotificationSent = false;
-            if (userPhone && env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_FROM_NUMBER) {
-                try {
-                    const client = twilio(env.TWILIO_ACCOUNT_SID, env.TWILIO_AUTH_TOKEN);
-                    await client.messages.create({
-                        body: "We can't send an ambulance right now. Please stay safe and try again later.",
-                        from: env.TWILIO_FROM_NUMBER,
-                        to: userPhone
-                    });
-                    smsNotificationSent = true;
-                } catch (error) {
-                    console.error('Failed to send SMS:', error.message);
-                }
-            }
-            const statusText = [];
-            if (smsNotificationSent) statusText.push('SMS');
-            if (emailNotificationSent) statusText.push('email');
+            const notifications = await sendUnavailableNotifications({
+                requesterEmail,
+                location,
+                userPhone: req.headers['x-user-phone']
+            });
 
-            const message = statusText.length
-                ? `We can't send it right now. Notification sent via ${statusText.join(' and ')}.`
-                : "We can't send it right now.";
+            const created = await AmbulanceRequest.create({
+                requesterEmail,
+                requesterRole,
+                location: { lat: location.lat, lng: location.lng },
+                status: 'unavailable',
+                notifications: { sms: notifications.smsSent, email: notifications.emailSent },
+                updates: [buildUpdate('unavailable', req.user, 'No available ambulance at the moment')]
+            });
 
             return res.status(503).json({
-                error: message,
-                notifications: {
-                    sms: smsNotificationSent,
-                    email: emailNotificationSent
-                }
+                error: "We can't send it right now.",
+                requestId: String(created._id),
+                notifications: { sms: notifications.smsSent, email: notifications.emailSent }
             });
         }
 
-        // If ambulance can be sent, create request (simplified)
-        const newRequest = {
-            id: nextAmbulanceRequestId++,
-            createdAt: new Date().toISOString(),
-            location,
+        const created = await AmbulanceRequest.create({
+            requesterEmail,
+            requesterRole,
+            location: { lat: location.lat, lng: location.lng },
             status: 'requested',
-            updates: [{ at: new Date().toISOString(), status: 'requested' }]
-        };
-        ambulanceRequests.push(newRequest);
-        return res.status(201).json({ requestId: newRequest.id, status: newRequest.status });
+            updates: [buildUpdate('requested', req.user)]
+        });
+
+        return res.status(201).json({ requestId: String(created._id), status: created.status });
     } catch (err) {
         console.error('Ambulance request error:', err);
         return res.status(500).json({ error: 'internal server error' });
     }
 };
 
-exports.getRequest = (req, res) => {
-    const id = Number(req.params.id);
-    const request = ambulanceRequests.find(r => r.id === id);
-    if (!request) return res.status(404).json({ error: 'not found' });
-    return res.json(request);
+exports.getRequest = async (req, res) => {
+    const id = normalizeObjectId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'invalid request id' });
+
+    const requestDoc = await AmbulanceRequest.findById(id).lean();
+    if (!requestDoc) return res.status(404).json({ error: 'not found' });
+    if (!canAccessRequest(req.user, requestDoc)) return res.status(403).json({ error: 'forbidden' });
+    return res.json(requestDoc);
 };
 
-exports.cancelRequest = (req, res) => {
-    const id = Number(req.params.id);
-    const request = ambulanceRequests.find(r => r.id === id);
-    if (!request) return res.status(404).json({ error: 'not found' });
-    if (request.status === 'arrived') return res.status(400).json({ error: 'cannot cancel after arrival' });
-    request.status = 'cancelled';
-    request.updates.push({ at: new Date().toISOString(), status: request.status });
-    return res.json({ id: request.id, status: request.status });
+exports.cancelRequest = async (req, res) => {
+    const id = normalizeObjectId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'invalid request id' });
+
+    const requestDoc = await AmbulanceRequest.findById(id);
+    if (!requestDoc) return res.status(404).json({ error: 'not found' });
+    if (!canAccessRequest(req.user, requestDoc)) return res.status(403).json({ error: 'forbidden' });
+    if (requestDoc.status === 'arrived') return res.status(400).json({ error: 'cannot cancel after arrival' });
+
+    requestDoc.status = 'cancelled';
+    requestDoc.updates.push(buildUpdate('cancelled', req.user));
+    await requestDoc.save();
+    return res.json({ id: String(requestDoc._id), status: requestDoc.status });
 };
 
-exports.assignRequest = (req, res) => {
-    const id = Number(req.params.id);
+exports.assignRequest = async (req, res) => {
+    const id = normalizeObjectId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'invalid request id' });
+    if (!isStaff(req.user)) return res.status(403).json({ error: 'staff access required' });
+
     const { ambulanceId } = req.body || {};
-    const request = ambulanceRequests.find(r => r.id === id);
-    if (!request) return res.status(404).json({ error: 'not found' });
-    request.status = 'assigned';
-    request.ambulanceId = ambulanceId || 'AMB-' + id;
-    request.updates.push({ at: new Date().toISOString(), status: request.status });
-    return res.json({ id: request.id, status: request.status, ambulanceId: request.ambulanceId });
+    const requestDoc = await AmbulanceRequest.findById(id);
+    if (!requestDoc) return res.status(404).json({ error: 'not found' });
+
+    requestDoc.status = 'assigned';
+    requestDoc.ambulanceId = String(ambulanceId || `AMB-${String(requestDoc._id).slice(-6)}`).trim().slice(0, 64);
+    requestDoc.updates.push(buildUpdate('assigned', req.user));
+    await requestDoc.save();
+
+    return res.json({ id: String(requestDoc._id), status: requestDoc.status, ambulanceId: requestDoc.ambulanceId });
 };
 
-exports.enRoute = (req, res) => {
-    const id = Number(req.params.id);
-    const request = ambulanceRequests.find(r => r.id === id);
-    if (!request) return res.status(404).json({ error: 'not found' });
-    request.status = 'en_route';
-    request.updates.push({ at: new Date().toISOString(), status: request.status });
-    return res.json({ id: request.id, status: request.status });
+exports.enRoute = async (req, res) => {
+    const id = normalizeObjectId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'invalid request id' });
+    if (!isStaff(req.user)) return res.status(403).json({ error: 'staff access required' });
+
+    const requestDoc = await AmbulanceRequest.findById(id);
+    if (!requestDoc) return res.status(404).json({ error: 'not found' });
+    requestDoc.status = 'en_route';
+    requestDoc.updates.push(buildUpdate('en_route', req.user));
+    await requestDoc.save();
+
+    return res.json({ id: String(requestDoc._id), status: requestDoc.status });
 };
 
-exports.arrived = (req, res) => {
-    const id = Number(req.params.id);
-    const request = ambulanceRequests.find(r => r.id === id);
-    if (!request) return res.status(404).json({ error: 'not found' });
-    request.status = 'arrived';
-    request.updates.push({ at: new Date().toISOString(), status: request.status });
-    return res.json({ id: request.id, status: request.status });
+exports.arrived = async (req, res) => {
+    const id = normalizeObjectId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'invalid request id' });
+    if (!isStaff(req.user)) return res.status(403).json({ error: 'staff access required' });
+
+    const requestDoc = await AmbulanceRequest.findById(id);
+    if (!requestDoc) return res.status(404).json({ error: 'not found' });
+    requestDoc.status = 'arrived';
+    requestDoc.updates.push(buildUpdate('arrived', req.user));
+    await requestDoc.save();
+
+    return res.json({ id: String(requestDoc._id), status: requestDoc.status });
 };
 
-exports.updateLocation = (req, res) => {
-    const { clientId, lat, lng } = req.body || {};
-    if (!clientId || typeof lat !== 'number' || typeof lng !== 'number') {
-        return res.status(400).json({ error: 'clientId, lat, lng required' });
+exports.updateLocation = async (req, res) => {
+    const { clientId: rawClientId, lat, lng } = req.body || {};
+    if (!isFiniteNumber(lat) || !isFiniteNumber(lng)) {
+        return res.status(400).json({ error: 'lat and lng required' });
     }
-    const value = { lat, lng, updatedAt: new Date().toISOString() };
-    clientLocations.set(clientId, value);
-    return res.json({ clientId, ...value });
+
+    const clientId = normalizeClientId(req, rawClientId);
+    if (!clientId) return res.status(400).json({ error: 'clientId required' });
+
+    if (!isStaff(req.user) && clientId !== String(req.user?.email || '').toLowerCase()) {
+        return res.status(403).json({ error: 'forbidden' });
+    }
+
+    const doc = await ClientLocation.findOneAndUpdate(
+        { clientId },
+        { clientId, lat, lng, updatedAt: new Date() },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+    ).lean();
+
+    return res.json({ clientId: doc.clientId, lat: doc.lat, lng: doc.lng, updatedAt: doc.updatedAt });
 };
 
-exports.getLocation = (req, res) => {
-    const { clientId } = req.params;
-    if (!clientLocations.has(clientId)) return res.status(404).json({ error: 'not found' });
-    return res.json({ clientId, ...clientLocations.get(clientId) });
+exports.getLocation = async (req, res) => {
+    const clientId = normalizeClientId(req, req.params.clientId);
+    if (!clientId) return res.status(400).json({ error: 'clientId required' });
+
+    if (!isStaff(req.user) && clientId !== String(req.user?.email || '').toLowerCase()) {
+        return res.status(403).json({ error: 'forbidden' });
+    }
+
+    const doc = await ClientLocation.findOne({ clientId }).lean();
+    if (!doc) return res.status(404).json({ error: 'not found' });
+    return res.json({ clientId: doc.clientId, lat: doc.lat, lng: doc.lng, updatedAt: doc.updatedAt });
 };

@@ -26,4 +26,12 @@ function doctorOnly(req, res, next) {
     next();
 }
 
-module.exports = { authMiddleware, adminOnly, doctorOnly };
+function staffOnly(req, res, next) {
+    if (!req.user) return res.status(401).json({ error: 'unauthorized' });
+    if (!['admin', 'doctor'].includes(req.user.role)) {
+        return res.status(403).json({ error: 'staff access required' });
+    }
+    next();
+}
+
+module.exports = { authMiddleware, adminOnly, doctorOnly, staffOnly };

@@ -11,6 +11,7 @@ import {
   updateAppointment
 } from '../utils/api';
 import { getToken, getTokenPayload } from '../utils/auth';
+import { getApiBaseUrl } from '../utils/runtimeConfig';
 import {
   ArrowPathIcon,
   ChatBubbleLeftRightIcon,
@@ -22,7 +23,7 @@ import {
   VideoCameraIcon
 } from '@heroicons/react/24/outline';
 
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000';
+const API_BASE_URL = getApiBaseUrl();
 const DEFAULT_ICE_SERVERS = [{ urls: ['stun:stun.l.google.com:19302'] }];
 const CONNECT_TIMEOUT_MS = 20000;
 const STATS_POLL_INTERVAL_MS = 5000;

@@ -1,6 +1,8 @@
 import { getToken } from './auth';
+import { getApiBaseUrl } from './runtimeConfig';
 
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000';
+const API_BASE_URL = getApiBaseUrl();
+const API_TIMEOUT_MS = Number(process.env.REACT_APP_API_TIMEOUT_MS || 15000);
 
 function getAuthHeaders() {
   const token = getToken();
@@ -11,6 +13,26 @@ function normalizeToken(rawToken) {
   const token = String(rawToken || '').trim();
   if (!token) return '';
   return token.replace(/^bearer\s+/i, '').replace(/^['"]|['"]$/g, '').trim();
+}
+
+async function fetchWithTimeout(url, options = {}) {
+  if (options.signal || typeof AbortController === 'undefined') {
+    return fetch(url, options);
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (err) {
+    if (err && err.name === 'AbortError') {
+      throw new Error(`Request timed out after ${Math.ceil(API_TIMEOUT_MS / 1000)}s`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 async function handleResponse(res) {
@@ -37,7 +59,7 @@ async function handleResponse(res) {
 }
 
 export const login = async ({ email, password }) => {
-  const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password })
@@ -51,7 +73,7 @@ export const login = async ({ email, password }) => {
 };
 
 export const loginWithGoogle = async (credential) => {
-  const res = await fetch(`${API_BASE_URL}/api/auth/google`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/auth/google`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ credential })
@@ -65,7 +87,7 @@ export const loginWithGoogle = async (credential) => {
 };
 
 export const register = async ({ email, password }) => {
-  const res = await fetch(`${API_BASE_URL}/api/auth/register`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password })
@@ -74,7 +96,7 @@ export const register = async ({ email, password }) => {
 };
 
 export const sendSignupCode = async ({ email, phone }) => {
-  const res = await fetch(`${API_BASE_URL}/api/auth/send-signup-code`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/auth/send-signup-code`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, phone })
@@ -83,7 +105,7 @@ export const sendSignupCode = async ({ email, phone }) => {
 };
 
 export const registerWithType = async ({ email, password, phone, code, accountType, doctorId }) => {
-  const res = await fetch(`${API_BASE_URL}/api/auth/register`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password, phone, code, accountType, doctorId })
@@ -92,12 +114,12 @@ export const registerWithType = async ({ email, password, phone, code, accountTy
 };
 
 export const getDoctors = async () => {
-  const res = await fetch(`${API_BASE_URL}/api/doctors`);
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/doctors`);
   return handleResponse(res);
 };
 
 export const getAppointments = async () => {
-  const res = await fetch(`${API_BASE_URL}/api/appointments`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/appointments`, {
     headers: { ...getAuthHeaders() }
   });
   return handleResponse(res);
@@ -112,14 +134,14 @@ export const getAppointmentsPage = async ({ page = 1, limit = 20, status, doctor
   if (status) params.set('status', status);
   if (doctorId) params.set('doctorId', String(doctorId));
 
-  const res = await fetch(`${API_BASE_URL}/api/appointments?${params.toString()}`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/appointments?${params.toString()}`, {
     headers: { ...getAuthHeaders() }
   });
   return handleResponse(res);
 };
 
 export const bookAppointment = async ({ doctorId, date, reason }) => {
-  const res = await fetch(`${API_BASE_URL}/api/appointments`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/appointments`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify({ doctorId, date, reason })
@@ -128,7 +150,7 @@ export const bookAppointment = async ({ doctorId, date, reason }) => {
 };
 
 export const updateAppointment = async (appointmentId, payload = {}) => {
-  const res = await fetch(`${API_BASE_URL}/api/appointments/${appointmentId}`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/appointments/${appointmentId}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify(payload)
@@ -138,12 +160,12 @@ export const updateAppointment = async (appointmentId, payload = {}) => {
 
 // Profile
 export const getMe = async () => {
-  const res = await fetch(`${API_BASE_URL}/api/auth/me`, { headers: { ...getAuthHeaders() } });
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/auth/me`, { headers: { ...getAuthHeaders() } });
   return handleResponse(res);
 };
 
 export const updateProfile = async (payload = {}) => {
-  const res = await fetch(`${API_BASE_URL}/api/auth/me`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/auth/me`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify(payload)
@@ -155,11 +177,44 @@ export const updatePhone = async (phone) => {
   return updateProfile({ phone });
 };
 
+// Insurance
+export const getInsuranceProfile = async () => {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/insurance/profile`, {
+    headers: { ...getAuthHeaders() }
+  });
+  return handleResponse(res);
+};
+
+export const saveInsuranceProfile = async (payload = {}) => {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/insurance/profile`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    body: JSON.stringify(payload)
+  });
+  return handleResponse(res);
+};
+
+export const evaluateInsuranceEligibility = async (payload = {}) => {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/insurance/evaluate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    body: JSON.stringify(payload)
+  });
+  return handleResponse(res);
+};
+
+export const getGovernmentInsurancePolicies = async () => {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/insurance/policies`, {
+    headers: { ...getAuthHeaders() }
+  });
+  return handleResponse(res);
+};
+
 // OCR
 export const ocrPrescription = async (file) => {
   const form = new FormData();
   form.append('file', file);
-  const res = await fetch(`${API_BASE_URL}/api/prescriptions/ocr`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/prescriptions/ocr`, {
     method: 'POST',
     headers: { ...getAuthHeaders() },
     body: form
@@ -171,7 +226,7 @@ export const ocrPrescription = async (file) => {
 export const transcribeVoice = async (file) => {
   const form = new FormData();
   form.append('file', file);
-  const res = await fetch(`${API_BASE_URL}/api/voice/transcribe`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/voice/transcribe`, {
     method: 'POST',
     headers: { ...getAuthHeaders() },
     body: form
@@ -181,7 +236,7 @@ export const transcribeVoice = async (file) => {
 
 // Twilio Verify helpers
 export const startPhoneVerification = async (phone) => {
-  const res = await fetch(`${API_BASE_URL}/api/verify/start`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/verify/start`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify({ phone })
@@ -190,7 +245,7 @@ export const startPhoneVerification = async (phone) => {
 };
 
 export const checkPhoneVerification = async ({ phone, code }) => {
-  const res = await fetch(`${API_BASE_URL}/api/verify/check`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/verify/check`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify({ phone, code })
@@ -200,7 +255,7 @@ export const checkPhoneVerification = async ({ phone, code }) => {
 
 // Health AI assistant
 export const healthAssistant = async ({ message, language }) => {
-  const res = await fetch(`${API_BASE_URL}/api/ai/health-assistant`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/ai/health-assistant`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify({ message, language })
@@ -209,7 +264,7 @@ export const healthAssistant = async ({ message, language }) => {
 };
 
 export const getTelemedicineIceServers = async () => {
-  const res = await fetch(`${API_BASE_URL}/api/telemedicine/ice-servers`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/telemedicine/ice-servers`, {
     headers: { ...getAuthHeaders() }
   });
   return handleResponse(res);
@@ -222,7 +277,7 @@ export const getTelemedicineAppointments = async ({ page = 1, limit = 20, status
   });
   if (status) params.set('status', status);
 
-  const res = await fetch(`${API_BASE_URL}/api/telemedicine/appointments?${params.toString()}`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/telemedicine/appointments?${params.toString()}`, {
     headers: { ...getAuthHeaders() }
   });
   return handleResponse(res);
@@ -230,14 +285,14 @@ export const getTelemedicineAppointments = async ({ page = 1, limit = 20, status
 
 export const getTelemedicineMessages = async (appointmentId, { limit = 100 } = {}) => {
   const params = new URLSearchParams({ limit: String(limit) });
-  const res = await fetch(`${API_BASE_URL}/api/telemedicine/appointments/${appointmentId}/messages?${params.toString()}`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/telemedicine/appointments/${appointmentId}/messages?${params.toString()}`, {
     headers: { ...getAuthHeaders() }
   });
   return handleResponse(res);
 };
 
 export const createTelemedicineMessage = async (appointmentId, { text, type = 'chat', roomId } = {}) => {
-  const res = await fetch(`${API_BASE_URL}/api/telemedicine/appointments/${appointmentId}/messages`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/telemedicine/appointments/${appointmentId}/messages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify({ text, type, roomId })
@@ -247,7 +302,7 @@ export const createTelemedicineMessage = async (appointmentId, { text, type = 'c
 
 // Ambulance
 export const requestAmbulance = async (location) => {
-  const res = await fetch(`${API_BASE_URL}/api/ambulance/request`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/ambulance/request`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify({ location })
@@ -263,7 +318,7 @@ export const getPharmacyProducts = async ({ q, category, inStock, prescription }
   if (typeof inStock !== 'undefined') params.set('inStock', String(inStock));
   if (typeof prescription !== 'undefined') params.set('prescription', String(prescription));
   const query = params.toString();
-  const res = await fetch(`${API_BASE_URL}/api/pharmacy/products${query ? `?${query}` : ''}`);
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/pharmacy/products${query ? `?${query}` : ''}`);
   return handleResponse(res);
 };
 
@@ -287,14 +342,14 @@ export const getAdminPharmacyProducts = async ({
   if (typeof inStock !== 'undefined') params.set('inStock', String(inStock));
   if (typeof prescription !== 'undefined') params.set('prescription', String(prescription));
 
-  const res = await fetch(`${API_BASE_URL}/api/pharmacy/admin/products?${params.toString()}`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/pharmacy/admin/products?${params.toString()}`, {
     headers: { ...getAuthHeaders() }
   });
   return handleResponse(res);
 };
 
 export const createPharmacyProduct = async (payload) => {
-  const res = await fetch(`${API_BASE_URL}/api/pharmacy/products`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/pharmacy/products`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify(payload || {})
@@ -303,7 +358,7 @@ export const createPharmacyProduct = async (payload) => {
 };
 
 export const updatePharmacyProduct = async (id, payload) => {
-  const res = await fetch(`${API_BASE_URL}/api/pharmacy/products/${id}`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/pharmacy/products/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify(payload || {})
@@ -312,7 +367,7 @@ export const updatePharmacyProduct = async (id, payload) => {
 };
 
 export const createPharmacyOrder = async ({ items, notes, deliveryAddress }) => {
-  const res = await fetch(`${API_BASE_URL}/api/pharmacy/orders`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/pharmacy/orders`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify({ items, notes, deliveryAddress })
@@ -327,14 +382,14 @@ export const getMyPharmacyOrders = async ({ page = 1, limit = 20, status } = {})
   });
   if (status) params.set('status', status);
 
-  const res = await fetch(`${API_BASE_URL}/api/pharmacy/orders?${params.toString()}`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/pharmacy/orders?${params.toString()}`, {
     headers: { ...getAuthHeaders() }
   });
   return handleResponse(res);
 };
 
 export const cancelPharmacyOrder = async (orderId) => {
-  const res = await fetch(`${API_BASE_URL}/api/pharmacy/orders/${orderId}/cancel`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/pharmacy/orders/${orderId}/cancel`, {
     method: 'POST',
     headers: { ...getAuthHeaders() }
   });
@@ -349,14 +404,14 @@ export const getPharmacyOrdersAdmin = async ({ page = 1, limit = 50, status, use
   if (status) params.set('status', status);
   if (userEmail) params.set('userEmail', userEmail);
 
-  const res = await fetch(`${API_BASE_URL}/api/pharmacy/orders?${params.toString()}`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/pharmacy/orders?${params.toString()}`, {
     headers: { ...getAuthHeaders() }
   });
   return handleResponse(res);
 };
 
 export const updatePharmacyOrderStatus = async (orderId, status) => {
-  const res = await fetch(`${API_BASE_URL}/api/pharmacy/orders/${orderId}/status`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/pharmacy/orders/${orderId}/status`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify({ status })
@@ -372,7 +427,7 @@ export const getDoctorDashboard = async ({ appointmentsPage = 1, appointmentsLim
     txLimit: String(txLimit)
   });
 
-  const res = await fetch(`${API_BASE_URL}/api/doctor/dashboard?${params.toString()}`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/doctor/dashboard?${params.toString()}`, {
     headers: { ...getAuthHeaders() }
   });
   return handleResponse(res);
@@ -380,14 +435,14 @@ export const getDoctorDashboard = async ({ appointmentsPage = 1, appointmentsLim
 
 export const getDoctorPatientRecord = async (patientEmail) => {
   const encodedEmail = encodeURIComponent(String(patientEmail || '').trim().toLowerCase());
-  const res = await fetch(`${API_BASE_URL}/api/doctor/patients/${encodedEmail}`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/doctor/patients/${encodedEmail}`, {
     headers: { ...getAuthHeaders() }
   });
   return handleResponse(res);
 };
 
 export const updateDoctorProfile = async (payload = {}) => {
-  const res = await fetch(`${API_BASE_URL}/api/doctor/profile`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/doctor/profile`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify(payload)

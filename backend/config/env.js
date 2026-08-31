@@ -13,6 +13,7 @@ const env = {
     MONGODB_URI: process.env.MONGODB_URI,
     USE_IN_MEMORY_DB: String(process.env.USE_IN_MEMORY_DB || 'true').toLowerCase() !== 'false',
     FORCE_HTTPS: String(process.env.FORCE_HTTPS || 'false').toLowerCase() === 'true',
+    CORS_ORIGINS: parseCsv(process.env.CORS_ORIGINS || ''),
 
     // Google Auth (optional)
     GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
@@ -23,10 +24,17 @@ const env = {
     TWILIO_FROM_NUMBER: process.env.TWILIO_FROM_NUMBER,
     TWILIO_VERIFY_SERVICE_SID: process.env.TWILIO_VERIFY_SERVICE_SID,
     NOTIFY_TO_NUMBER: process.env.NOTIFY_TO_NUMBER,
+    AMBULANCE_CAN_DISPATCH: String(process.env.AMBULANCE_CAN_DISPATCH || 'true').toLowerCase() !== 'false',
 
     // AI
+    AI_PROVIDER: String(process.env.AI_PROVIDER || 'auto').trim().toLowerCase(), // auto | groq | gemini
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+    GEMINI_MODEL: String(process.env.GEMINI_MODEL || 'gemini-1.5-flash').trim(),
+    GROQ_API_KEY: process.env.GROQ_API_KEY,
+    GROQ_BASE_URL: String(process.env.GROQ_BASE_URL || 'https://api.groq.com/openai/v1').trim(),
+    GROQ_CHAT_MODEL: String(process.env.GROQ_CHAT_MODEL || 'llama-3.3-70b-versatile').trim(),
+    GROQ_TRANSCRIBE_MODEL: String(process.env.GROQ_TRANSCRIBE_MODEL || 'whisper-large-v3-turbo').trim(),
 
     // Email
     EMAIL_TO: process.env.EMAIL_TO,
@@ -39,7 +47,9 @@ const env = {
     TELEMEDICINE_STUN_SERVERS: parseCsv(process.env.TELEMEDICINE_STUN_SERVERS || 'stun:stun.l.google.com:19302'),
     TELEMEDICINE_TURN_SERVERS: parseCsv(process.env.TELEMEDICINE_TURN_SERVERS || ''),
     TELEMEDICINE_TURN_USERNAME: String(process.env.TELEMEDICINE_TURN_USERNAME || '').trim(),
-    TELEMEDICINE_TURN_CREDENTIAL: String(process.env.TELEMEDICINE_TURN_CREDENTIAL || '').trim()
+    TELEMEDICINE_TURN_CREDENTIAL: String(process.env.TELEMEDICINE_TURN_CREDENTIAL || '').trim(),
+    TELEMEDICINE_TWILIO_ICE_ENABLED: String(process.env.TELEMEDICINE_TWILIO_ICE_ENABLED || 'false').toLowerCase() === 'true',
+    TELEMEDICINE_TWILIO_ICE_TTL: Number(process.env.TELEMEDICINE_TWILIO_ICE_TTL || 3600)
 };
 
 // Validation for critical secrets

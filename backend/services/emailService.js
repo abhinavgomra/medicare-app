@@ -5,6 +5,7 @@ let mailer = null;
 
 async function initMailer() {
     if (mailer) return mailer;
+    if (process.env.NODE_ENV === 'test') return null;
 
     // If real SMTP is configured, use it
     if (env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS && env.EMAIL_TO) {
@@ -41,9 +42,6 @@ async function initMailer() {
         return null;
     }
 }
-
-// Initialize on load
-initMailer();
 
 async function sendAppointmentEmail({ doctorId, date, reason, userEmail }) {
     try {

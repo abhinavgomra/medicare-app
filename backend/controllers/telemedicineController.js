@@ -2,6 +2,7 @@ const env = require('../config/env');
 const Appointment = require('../models/Appointment');
 const Doctor = require('../models/Doctor');
 const TelemedicineMessage = require('../models/TelemedicineMessage');
+const twilio = require('twilio');
 
 function toPositiveInt(value, fallback, max = 100) {
     const parsed = Number(value);
@@ -74,12 +75,56 @@ function buildIceServers() {
     };
 }
 
+let cachedTwilioIce = null;
+let twilioIceExpiresAt = 0;
+
+async function getTwilioIceServers() {
+    if (!env.TELEMEDICINE_TWILIO_ICE_ENABLED) return null;
+    if (!env.TWILIO_ACCOUNT_SID || !env.TWILIO_AUTH_TOKEN) return null;
+
+    const now = Date.now();
+    if (cachedTwilioIce && twilioIceExpiresAt > now) {
+        return cachedTwilioIce;
+    }
+
+    const client = twilio(env.TWILIO_ACCOUNT_SID, env.TWILIO_AUTH_TOKEN);
+    const ttl = Number.isFinite(env.TELEMEDICINE_TWILIO_ICE_TTL) && env.TELEMEDICINE_TWILIO_ICE_TTL > 0
+        ? Math.floor(env.TELEMEDICINE_TWILIO_ICE_TTL)
+        : 3600;
+
+    const token = await client.tokens.create({ ttl });
+    const rawIceServers = Array.isArray(token?.iceServers)
+        ? token.iceServers
+        : (Array.isArray(token?.ice_servers) ? token.ice_servers : []);
+    const iceServers = rawIceServers.map((entry) => {
+        const normalized = {
+            urls: entry?.urls || entry?.url
+        };
+        if (entry?.username) normalized.username = entry.username;
+        if (entry?.credential) normalized.credential = entry.credential;
+        return normalized;
+    });
+    if (!iceServers.length) return null;
+
+    const hasTurn = iceServers.some((entry) => {
+        const urls = Array.isArray(entry?.urls) ? entry.urls : [entry?.urls];
+        return urls.some((u) => String(u || '').startsWith('turn:') || String(u || '').startsWith('turns:'));
+    });
+
+    cachedTwilioIce = { iceServers, hasTurn };
+    twilioIceExpiresAt = now + Math.max(60, ttl - 30) * 1000;
+    return cachedTwilioIce;
+}
+
 exports.getIceServers = async (_req, res) => {
     try {
+        const twilioIce = await getTwilioIceServers();
+        if (twilioIce) return res.json(twilioIce);
         const payload = buildIceServers();
         return res.json(payload);
     } catch (_err) {
-        return res.status(500).json({ error: 'failed_to_fetch_ice_servers' });
+        const payload = buildIceServers();
+        return res.json(payload);
     }
 };
 

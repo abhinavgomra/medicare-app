@@ -1,0 +1,14 @@
+process.env.NODE_ENV = 'test';
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'test_jwt_secret_123';
+process.env.TEST_MONGODB_URI = process.env.TEST_MONGODB_URI || '';
+process.env.CORS_ORIGINS = process.env.CORS_ORIGINS || '';
+process.env.TELEMEDICINE_TWILIO_ICE_ENABLED = 'false';
+process.env.AMBULANCE_CAN_DISPATCH = process.env.AMBULANCE_CAN_DISPATCH || 'true';
+process.env.TWILIO_ACCOUNT_SID = '';
+process.env.TWILIO_AUTH_TOKEN = '';
+process.env.TWILIO_FROM_NUMBER = '';
+process.env.TWILIO_VERIFY_SERVICE_SID = '';
+process.env.SMTP_HOST = '';
+process.env.SMTP_USER = '';
+process.env.SMTP_PASS = '';
+process.env.EMAIL_TO = '';
