@@ -2,7 +2,7 @@ import { getToken } from './auth';
 import { getApiBaseUrl } from './runtimeConfig';
 
 const API_BASE_URL = getApiBaseUrl();
-const API_TIMEOUT_MS = Number(process.env.REACT_APP_API_TIMEOUT_MS || 15000);
+const API_TIMEOUT_MS = Number(process.env.REACT_APP_API_TIMEOUT_MS || 120000); // 120s for Render free tier cold starts
 
 function getAuthHeaders() {
   const token = getToken();
