@@ -183,7 +183,7 @@ exports.transcribeVoice = async (req, res) => {
 exports.startVerify = async (req, res) => {
   try {
     // Mock mode bypass — returns instantly without calling Twilio
-    if (env.MOCK_TWILIO === 'true') {
+    if (env.MOCK_TWILIO) {
       return res.json({ sid: 'mock_sid', status: 'pending' });
     }
     const twilioConfig = getTwilioConfigStatus();
@@ -213,7 +213,7 @@ exports.startVerify = async (req, res) => {
 exports.checkVerify = async (req, res) => {
   try {
     // Mock mode bypass — code 123456 always approves
-    if (env.MOCK_TWILIO === 'true') {
+    if (env.MOCK_TWILIO) {
       const { phone, code } = req.body || {};
       if (!phone || !code) return res.status(400).json({ error: 'phone and code required' });
       if (String(code).trim() === '123456') {

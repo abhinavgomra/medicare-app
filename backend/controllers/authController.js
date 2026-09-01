@@ -98,7 +98,7 @@ exports.sendSignupCode = async (req, res) => {
     const e164 = normalizePhoneToE164(phone) || phone;
     if (!e164) return res.status(400).json({ error: 'Invalid phone format. Use e.g. 9876543210 or +919876543210' });
 
-    if (process.env.MOCK_TWILIO === 'true') {
+    if (env.MOCK_TWILIO) {
       return res.json({ sid: 'mock_sid', status: 'pending' });
     }
 
@@ -138,7 +138,7 @@ exports.register = async (req, res) => {
     const e164 = normalizePhoneToE164(phone) || phone;
     if (!e164) return res.status(400).json({ error: 'Invalid phone format' });
 
-    if (process.env.MOCK_TWILIO === 'true') {
+    if (env.MOCK_TWILIO) {
       if (String(code).trim() !== '123456') {
         return res.status(400).json({ error: 'Invalid mock code. Use 123456.' });
       }

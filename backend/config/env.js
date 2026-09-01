@@ -25,6 +25,7 @@ const env = {
     TWILIO_VERIFY_SERVICE_SID: process.env.TWILIO_VERIFY_SERVICE_SID,
     NOTIFY_TO_NUMBER: process.env.NOTIFY_TO_NUMBER,
     AMBULANCE_CAN_DISPATCH: String(process.env.AMBULANCE_CAN_DISPATCH || 'true').toLowerCase() !== 'false',
+    MOCK_TWILIO: String(process.env.MOCK_TWILIO || 'false').toLowerCase() === 'true',
 
     // AI
     AI_PROVIDER: String(process.env.AI_PROVIDER || 'auto').trim().toLowerCase(), // auto | groq | gemini
