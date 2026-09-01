@@ -11,20 +11,20 @@ const EmergencyCare = () => {
     {
       icon: <TruckIcon className="h-8 w-8 text-red-500" />,
       title: 'Emergency Ambulance',
-      number: '911',
-      description: 'Immediate medical transportation'
+      number: '108',
+      description: 'Free ambulance service, available 24/7'
     },
     {
       icon: <PhoneIcon className="h-8 w-8 text-red-500" />,
-      title: '24/7 Helpline',
-      number: '1-800-MED-HELP',
-      description: 'Round-the-clock medical assistance'
+      title: 'National Emergency',
+      number: '112',
+      description: 'Police, Fire & Medical — single helpline'
     },
     {
       icon: <MapPinIcon className="h-8 w-8 text-red-500" />,
-      title: 'Nearest Hospital',
-      number: 'Find Location',
-      description: 'Locate the closest emergency room'
+      title: 'Medical Helpline',
+      number: '104',
+      description: 'Health advice & nearest hospital locator'
     }
   ];
 
@@ -67,7 +67,7 @@ const EmergencyCare = () => {
           <CardContent className="p-6 text-center">
             <div className="text-2xl font-bold text-red-600 mb-4">🚨 EMERGENCY ALERT</div>
             <p className="text-red-700 mb-4">
-              If this is a life-threatening emergency, please call 911 immediately.
+              If this is a life-threatening emergency, please call <strong>112</strong> immediately.
             </p>
             <button
               onClick={requestAmbulanceHandler}
@@ -102,8 +102,8 @@ const EmergencyCare = () => {
               <div className="bg-blue-50 p-4 rounded-lg">
                 <h4 className="font-semibold text-blue-800 mb-2">🚑 For Ambulance:</h4>
                 <ul className="list-disc list-inside text-blue-700 space-y-1">
-                  <li>Call 911 and provide your exact location</li>
-                  <li>Describe the emergency clearly</li>
+                  <li>Call <strong>108</strong> (free ambulance) or <strong>112</strong></li>
+                  <li>Provide your exact address and landmark</li>
                   <li>Stay on the line until help arrives</li>
                 </ul>
               </div>
@@ -120,7 +120,7 @@ const EmergencyCare = () => {
               <div className="bg-yellow-50 p-4 rounded-lg">
                 <h4 className="font-semibold text-yellow-800 mb-2">⏰ Response Time:</h4>
                 <p className="text-yellow-700">
-                  Average emergency response time in your area: <strong>8-12 minutes</strong>
+                  Average ambulance response time: <strong>10–15 minutes</strong> (urban), <strong>20–30 min</strong> (rural)
                 </p>
               </div>
             </div>

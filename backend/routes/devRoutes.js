@@ -15,11 +15,11 @@ router.post('/debug/email', authMiddleware, async (req, res) => {
     }
 });
 
-// Simple no-auth dev check so you can click a URL to test email
-router.get('/debug/email-test', async (req, res) => {
+// Debug email test — now auth-guarded so it can't be abused in production
+router.get('/debug/email-test', authMiddleware, async (req, res) => {
     try {
         const now = new Date().toISOString().slice(0, 16).replace('T', ' ');
-        const result = await emailService.sendAppointmentEmail({ doctorId: 99, date: now, reason: 'email-test (GET)', userEmail: 'dev@local' });
+        const result = await emailService.sendAppointmentEmail({ doctorId: 99, date: now, reason: 'email-test (GET)', userEmail: req.user.email || 'dev@local' });
         return res.json({ ok: true, ...result });
     } catch (err) {
         return res.status(500).json({ ok: false, error: err && err.message });

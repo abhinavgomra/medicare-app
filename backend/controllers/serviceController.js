@@ -182,6 +182,10 @@ exports.transcribeVoice = async (req, res) => {
 
 exports.startVerify = async (req, res) => {
   try {
+    // Mock mode bypass — returns instantly without calling Twilio
+    if (env.MOCK_TWILIO === 'true') {
+      return res.json({ sid: 'mock_sid', status: 'pending' });
+    }
     const twilioConfig = getTwilioConfigStatus();
     if (!smsClient || !env.TWILIO_VERIFY_SERVICE_SID) {
       return res.status(400).json({
@@ -208,6 +212,21 @@ exports.startVerify = async (req, res) => {
 
 exports.checkVerify = async (req, res) => {
   try {
+    // Mock mode bypass — code 123456 always approves
+    if (env.MOCK_TWILIO === 'true') {
+      const { phone, code } = req.body || {};
+      if (!phone || !code) return res.status(400).json({ error: 'phone and code required' });
+      if (String(code).trim() === '123456') {
+        if (req.user) {
+          await User.findOneAndUpdate(
+            { email: req.user.email },
+            { phoneVerified: true, phone: normalizePhoneToE164(phone) || phone }
+          );
+        }
+        return res.json({ status: 'approved', valid: true });
+      }
+      return res.json({ status: 'rejected', valid: false });
+    }
     const twilioConfig = getTwilioConfigStatus();
     if (!smsClient || !env.TWILIO_VERIFY_SERVICE_SID) {
       return res.status(400).json({

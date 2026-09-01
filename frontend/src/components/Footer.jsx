@@ -29,15 +29,15 @@ const Footer = () => {
             <div className="space-y-2 text-gray-400">
               <div className="flex items-center">
                 <PhoneIcon className="h-5 w-5 mr-2" />
-                <span>+1 (555) 123-4567</span>
+                <span>+91 1800-MED-CARE (Toll Free)</span>
               </div>
               <div className="flex items-center">
                 <EnvelopeIcon className="h-5 w-5 mr-2" />
-                <span>support@medicare.com</span>
+                <span>support@medicarehealth.in</span>
               </div>
               <div className="flex items-center">
                 <MapPinIcon className="h-5 w-5 mr-2" />
-                <span>123 Health Street, Medical City</span>
+                <span>Bengaluru, Karnataka, India</span>
               </div>
             </div>
           </div>
@@ -49,7 +49,7 @@ const Footer = () => {
             Made with love for better health
           </p>
           <p className="text-gray-400 mt-4 md:mt-0">
-            © 2024 MediCare. All rights reserved.
+            © {new Date().getFullYear()} MediCare. All rights reserved.
           </p>
         </div>
       </div>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardTitle } from '../components/Card';
 import { UserIcon } from '@heroicons/react/24/outline';
 import { getDoctors, getAppointments, bookAppointment } from '../utils/api';
@@ -12,6 +12,14 @@ const AppointmentBooking = () => {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
+
+  const today = new Date().toISOString().split('T')[0];
+
+  // Build a lookup map: doctorId → doctor object
+  const doctorsById = useMemo(
+    () => Object.fromEntries(doctors.map((d) => [String(d.id), d])),
+    [doctors]
+  );
 
   useEffect(() => {
     (async () => {
@@ -78,7 +86,7 @@ const AppointmentBooking = () => {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-                    <input type="date" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500" value={date} onChange={(e)=>setDate(e.target.value)} required />
+                    <input type="date" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500" min={today} value={date} onChange={(e)=>setDate(e.target.value)} required />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Reason</label>
@@ -109,11 +117,20 @@ const AppointmentBooking = () => {
                       <div className="flex items-center gap-3">
                         <UserIcon className="h-5 w-5 text-gray-500" />
                         <div>
-                          <div className="font-medium">Doctor #{a.doctorId}</div>
-                          <div className="text-sm text-gray-600">{a.date} {a.reason ? `• ${a.reason}` : ''}</div>
+                          <div className="font-medium">
+                            {doctorsById[String(a.doctorId)]?.name || `Doctor #${a.doctorId}`}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {doctorsById[String(a.doctorId)]?.specialty}
+                          </div>
+                          <div className="text-sm text-gray-600">{a.date}{a.reason ? ` • ${a.reason}` : ''}</div>
                         </div>
                       </div>
-                      <div className="text-xs text-gray-500">ID: {a.id}</div>
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                        a.status === 'confirmed' ? 'bg-green-100 text-green-700' :
+                        a.status === 'cancelled' ? 'bg-red-100 text-red-700' :
+                        'bg-yellow-100 text-yellow-700'
+                      }`}>{a.status || 'booked'}</span>
                     </div>
                   ))}
                   {appointments.length === 0 && (

@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { motion } from 'framer-motion';
+import { isAuthenticated } from '../utils/auth';
 import {
   VideoCameraIcon,
   BoltIcon,
@@ -54,7 +55,7 @@ const Home = () => {
                   Get Started
                 </Button>
               </Link>
-              <Link to="/doctor-finder">
+              <Link to={isAuthenticated() ? '/doctor-finder' : '/login'}>
                 <Button variant="secondary" size="lg" className="w-full sm:w-auto">
                   Find a Doctor
                 </Button>
@@ -113,7 +114,7 @@ const Home = () => {
             variants={container}
             initial="hidden"
             animate="show"
-            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6"
+            className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-4 sm:gap-6"
           >
             {[
               { title: 'Telemedicine', desc: 'Secure video consultations.', to: '/telemedicine', icon: VideoCameraIcon, color: 'text-blue-500', bg: 'bg-blue-50' },

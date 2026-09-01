@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardTitle } from '../components/Card';
 import { MagnifyingGlassIcon, MapPinIcon, StarIcon } from '@heroicons/react/24/outline';
 import { getDoctors, bookAppointment } from '../utils/api';
@@ -8,11 +9,13 @@ import { Button } from '../components/Button';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const DoctorFinder = () => {
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchParams] = useSearchParams();
+  const [searchTerm, setSearchTerm] = useState(searchParams.get('q') || '');
   const [specialty, setSpecialty] = useState('');
   const [loading, setLoading] = useState(true);
   const [doctors, setDoctors] = useState([]);
   const { addToast } = useToast();
+  const today = new Date().toISOString().split('T')[0];
   const [booking, setBooking] = useState({ open: false, doctor: null, date: '', reason: '', saving: false });
 
   // Load doctors on mount
@@ -197,7 +200,7 @@ const DoctorFinder = () => {
               <div className="p-6 space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Preferred Date</label>
-                  <input type="date" className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:outline-none" value={booking.date} onChange={(e) => setBooking(b => ({ ...b, date: e.target.value }))} />
+                  <input type="date" className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:outline-none" min={today} value={booking.date} onChange={(e) => setBooking(b => ({ ...b, date: e.target.value }))} />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Reason for Visit</label>

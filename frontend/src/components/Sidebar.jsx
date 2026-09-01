@@ -54,14 +54,6 @@ const Sidebar = () => {
   const doctor = isDoctor();
   const admin = isAdmin();
   const [collapsed, setCollapsed] = useState(false);
-  
-  // Decide which navigation items to show based on role
-  let visibleItems = navItems;
-  if (admin) {
-    visibleItems = adminNavItems;
-  } else if (doctor) {
-    visibleItems = doctorNavItems;
-  }
 
   useEffect(() => {
     const saved = localStorage.getItem('sidebarCollapsed');
@@ -73,6 +65,18 @@ const Sidebar = () => {
     setCollapsed(next);
     try { localStorage.setItem('sidebarCollapsed', String(next)); } catch (_) {}
   };
+
+  // Hide sidebar entirely on the login page or when not authenticated
+  // (must be after all hooks — Rules of Hooks)
+  if (!authed || location.pathname === '/login') return null;
+
+  // Decide which navigation items to show based on role
+  let visibleItems = navItems;
+  if (admin) {
+    visibleItems = adminNavItems;
+  } else if (doctor) {
+    visibleItems = doctorNavItems;
+  }
 
   return (
     <aside className={`hidden md:block ${collapsed ? 'md:w-16' : 'md:w-56 lg:w-64'} shrink-0 border-r border-gray-100 bg-white`}>

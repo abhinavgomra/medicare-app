@@ -481,9 +481,9 @@ const SymptomChecker = () => {
                       <p className="text-blue-700">
                         Consider scheduling a consultation with a doctor for proper diagnosis and treatment plan.
                       </p>
-                      <button className="mt-3 bg-primary-500 text-white px-4 py-2 rounded-lg hover:bg-primary-600">
+                      <a href="/doctor-finder" className="inline-block mt-3 bg-primary-500 text-white px-4 py-2 rounded-lg hover:bg-primary-600">
                         Find a Doctor
-                      </button>
+                      </a>
                     </div>
                   </div>
                 </CardContent>

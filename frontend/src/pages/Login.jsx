@@ -36,8 +36,8 @@ const Login = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { addToast } = useToast();
-  const [email, setEmail] = useState('test@example.com');
-  const [password, setPassword] = useState('pass');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [mode, setMode] = useState('login');
   const [accountType, setAccountType] = useState('user');
   const [doctorId, setDoctorId] = useState('');
@@ -160,15 +160,15 @@ const Login = () => {
           accountType,
           doctorId: accountType === 'doctor' ? Number(doctorId) : null
         });
-        addToast({ title: 'Account created', description: 'You can now log in', variant: 'success' });
+        addToast({ title: 'Account created', description: 'Logging you in…', variant: 'success' });
       }
       const loginRes = await login({ email, password });
-      addToast({ title: 'Welcome back', description: 'Login successful', variant: 'success' });
+      addToast({ title: 'Welcome!', description: 'Login successful', variant: 'success' });
       navigateAfterLogin(loginRes);
     } catch (err) {
       const message = err.message || 'Something went wrong';
       setError(message);
-      addToast({ title: 'Login failed', description: message, variant: 'error' });
+      addToast({ title: mode === 'register' ? 'Registration failed' : 'Login failed', description: message, variant: 'error' });
     } finally {
       setLoading(false);
     }

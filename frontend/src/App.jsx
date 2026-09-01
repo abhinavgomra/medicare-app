@@ -25,6 +25,7 @@ import PrescriptionOCR from './pages/PrescriptionOCR';
 import VoiceControl from './pages/VoiceControl';
 import DoctorPortal from './pages/DoctorPortal';
 import { getTokenPayload, isAuthenticated } from './utils/auth';
+import NotFound from './pages/NotFound';
 
 function RoleAwareHome() {
   if (!isAuthenticated()) return <PageTransition><Home /></PageTransition>;
@@ -62,7 +63,7 @@ function AnimatedRoutes() {
         <Route path="/voice-control" element={<UserRoute><PageTransition><VoiceControl /></PageTransition></UserRoute>} />
         <Route path="/doctor-portal" element={<DoctorRoute><PageTransition><DoctorPortal /></PageTransition></DoctorRoute>} />
         <Route path="/admin/pharmacy" element={<AdminRoute><PageTransition><PharmacyAdmin /></PageTransition></AdminRoute>} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<PageTransition><NotFound /></PageTransition>} />
       </Routes>
     </AnimatePresence>
   );
@@ -73,7 +74,7 @@ function App() {
     <Router>
       <div className="min-h-screen flex flex-col bg-slate-50">
         <Navbar />
-        <div className="flex">
+        <div className="flex flex-1">
           <Sidebar />
           <main className="flex-grow pt-2 md:pt-3 px-3 md:px-5 lg:px-6">
             <div className="w-full max-w-6xl xl:max-w-7xl mx-auto">

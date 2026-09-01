@@ -4,9 +4,11 @@ import { CalendarIcon, UserIcon, ArrowDownTrayIcon, ShareIcon, ArrowPathIcon } f
 import { PageTransition } from '../components/PageTransition';
 import { motion } from 'framer-motion';
 import { getTelemedicineAppointments, getTelemedicineMessages } from '../utils/api';
+import { useToast } from '../components/Toast';
 
 const HealthRecords = () => {
   const [activeTab, setActiveTab] = useState('all');
+  const { addToast } = useToast();
   const [conversationAppointments, setConversationAppointments] = useState([]);
   const [selectedConversationAppointmentId, setSelectedConversationAppointmentId] = useState('');
   const [conversationMessages, setConversationMessages] = useState([]);
@@ -250,8 +252,14 @@ const HealthRecords = () => {
                 </CardContent>
               </Card>
 
-              {/* Timeline */}
+              {/* Timeline — sample records */}
               <div className="relative">
+                <div className="flex items-center gap-2 mb-4">
+                  <span className="text-xs font-medium bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
+                    📢 Sample Data
+                  </span>
+                  <span className="text-xs text-gray-500">Connect your EMR to see real records</span>
+                </div>
                 <div className="absolute left-6 top-4 bottom-4 w-0.5 bg-gray-200"></div>
                 <div className="space-y-6">
                   {filteredRecords.map((record, index) => (
@@ -349,10 +357,16 @@ const HealthRecords = () => {
 
                   <div className="mt-8 pt-6 border-t border-gray-100">
                     <h4 className="font-semibold text-gray-900 mb-3">Quick Actions</h4>
-                    <button className="w-full bg-white border border-gray-200 text-gray-700 py-2.5 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-all font-medium text-sm mb-3 shadow-sm">
+                    <button
+                      className="w-full bg-white border border-gray-200 text-gray-700 py-2.5 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-all font-medium text-sm mb-3 shadow-sm"
+                      onClick={() => addToast({ title: 'Coming soon', description: 'Medical report requests will be available in a future update.', variant: 'default' })}
+                    >
                       Request Medical Report
                     </button>
-                    <button className="w-full bg-white border border-gray-200 text-gray-700 py-2.5 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-all font-medium text-sm shadow-sm">
+                    <button
+                      className="w-full bg-white border border-gray-200 text-gray-700 py-2.5 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-all font-medium text-sm shadow-sm"
+                      onClick={() => addToast({ title: 'Coming soon', description: 'Document upload will be available in a future update.', variant: 'default' })}
+                    >
                       Upload New Document
                     </button>
                   </div>
