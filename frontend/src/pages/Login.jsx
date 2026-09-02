@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardTitle } from '../components/Card';
-import { login, loginWithGoogle, registerWithType, sendSignupCode } from '../utils/api';
+import { login, loginWithGoogle, registerWithType } from '../utils/api';
 import { Button } from '../components/Button';
 import { useToast } from '../components/Toast';
 import { motion, AnimatePresence } from 'framer-motion';
