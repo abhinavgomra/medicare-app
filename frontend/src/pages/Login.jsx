@@ -41,10 +41,6 @@ const Login = () => {
   const [mode, setMode] = useState('login');
   const [accountType, setAccountType] = useState('user');
   const [doctorId, setDoctorId] = useState('');
-  const [phone, setPhone] = useState('');
-  const [code, setCode] = useState('');
-  const [codeSent, setCodeSent] = useState(false);
-  const [sendingCode, setSendingCode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState('');
@@ -296,9 +292,6 @@ const Login = () => {
                     onClick={() => {
                       setMode(mode === 'login' ? 'register' : 'login');
                       setError('');
-                      setCodeSent(false);
-                      setCode('');
-                      setPhone('');
                     }}
                   >
                     {mode === 'login' ? 'Sign up' : 'Log in'}
