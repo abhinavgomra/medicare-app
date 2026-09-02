@@ -117,37 +117,18 @@ exports.sendSignupCode = async (req, res) => {
 };
 
 exports.register = async (req, res) => {
-  const { email, password, phone, code, accountType, doctorId } = req.body || {};
+  const { email, password, phone, accountType, doctorId } = req.body || {};
   const normalizedEmail = String(email || '').trim().toLowerCase();
   if (!normalizedEmail || !password) return res.status(400).json({ error: 'email and password required' });
-  if (!phone || !code) return res.status(400).json({ error: 'phone and verification code required' });
-
-  const smsClient = getSmsClient();
-  const twilioConfig = getTwilioConfigStatus();
-  if (!smsClient || !env.TWILIO_VERIFY_SERVICE_SID) {
-    return res.status(400).json({
-      error: 'Phone verification is not configured',
-      details: twilioConfig.issues.join('; ') || 'Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_VERIFY_SERVICE_SID'
-    });
-  }
 
   try {
     const exists = await User.findOne({ email: normalizedEmail });
     if (exists) return res.status(409).json({ error: 'user exists' });
 
-    const e164 = normalizePhoneToE164(phone) || phone;
-    if (!e164) return res.status(400).json({ error: 'Invalid phone format' });
-
-    if (env.MOCK_TWILIO) {
-      if (String(code).trim() !== '123456') {
-        return res.status(400).json({ error: 'Invalid mock code. Use 123456.' });
-      }
-    } else {
-      const check = await smsClient.verify.v2.services(env.TWILIO_VERIFY_SERVICE_SID)
-        .verificationChecks.create({ to: e164, code: String(code).trim() });
-      if (check.status !== 'approved') {
-        return res.status(400).json({ error: 'Invalid or expired verification code. Request a new one.' });
-      }
+    let e164 = '';
+    if (phone) {
+      e164 = normalizePhoneToE164(phone) || phone;
+      if (!e164) return res.status(400).json({ error: 'Invalid phone format' });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -176,17 +157,12 @@ exports.register = async (req, res) => {
       role,
       doctorId: finalDoctorId,
       phone: e164,
-      phoneVerified: true
+      phoneVerified: false
     });
     res.status(201).json({ message: 'registered', role, doctorId: finalDoctorId });
   } catch (err) {
     console.error('Register error:', err);
-    const msg = err.code === 20404
-      ? 'Invalid or expired code. Request a new one.'
-      : err.code === 20003
-        ? 'Twilio authentication failed. Check TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN'
-        : err.message;
-    return res.status(500).json({ error: 'failed to register', details: msg });
+    return res.status(500).json({ error: 'failed to register', details: err.message });
   }
 };
 

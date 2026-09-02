@@ -136,14 +136,6 @@ const Login = () => {
       return;
     }
     if (mode === 'register') {
-      if (!phone || phone.trim().length < 10) {
-        setError('Phone number is required (min 10 digits)');
-        return;
-      }
-      if (!codeSent || !code || code.trim().length < 4) {
-        setError('Send verification code first, then enter the code from SMS');
-        return;
-      }
       if (accountType === 'doctor' && !doctorId) {
         setError('Doctor ID is required for doctor registration');
         return;
@@ -155,8 +147,8 @@ const Login = () => {
         await registerWithType({
           email,
           password,
-          phone: phone.trim(),
-          code: code.trim(),
+          phone: '',
+          code: '',
           accountType,
           doctorId: accountType === 'doctor' ? Number(doctorId) : null
         });
@@ -226,53 +218,6 @@ const Login = () => {
                 </div>
                 {mode === 'register' && (
                   <>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">Phone</label>
-                      <input
-                        type="tel"
-                        className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all bg-slate-50 focus:bg-white"
-                        placeholder="e.g. 9876543210 or +919876543210"
-                        value={phone}
-                        onChange={(e) => { setPhone(e.target.value); setCodeSent(false); }}
-                      />
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        disabled={!email || !/[^\s@]+@[^\s@]+\.[^\s@]+/.test(email) || !phone || phone.trim().length < 10 || sendingCode}
-                        loading={sendingCode}
-                        onClick={async () => {
-                          setError('');
-                          setSendingCode(true);
-                          try {
-                            await sendSignupCode({ email, phone: phone.trim() });
-                            setCodeSent(true);
-                            addToast({ title: 'Code sent', description: 'Check your SMS', variant: 'success' });
-                          } catch (e) {
-                            setError(e.message || 'Failed to send code');
-                          } finally {
-                            setSendingCode(false);
-                          }
-                        }}
-                      >
-                        {codeSent ? 'Code sent' : 'Send verification code'}
-                      </Button>
-                    </div>
-                    {codeSent && (
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Verification code</label>
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          maxLength={6}
-                          className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all bg-slate-50 focus:bg-white"
-                          placeholder="Enter 6-digit code from SMS"
-                          value={code}
-                          onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-                        />
-                      </div>
-                    )}
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-1">Account Type</label>
                       <select
